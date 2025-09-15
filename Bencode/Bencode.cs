@@ -1,7 +1,18 @@
 namespace Torrencial.Bencode;
 
-public class BEDictionary {
-    
+using System.Collections.Generic;
+
+public class BEDictionary
+{
+    private SortedDictionary<string, object>  dict = new SortedDictionary<string, object>();
+
+    public BEDictionary() { }
+    public void Add(string key, Int64 value) => dict.Add(key, value);
+    public void Add(string key, string value) => dict.Add(key, value);
+    public void Add(string key, BEList value) => dict.Add(key, value);
+    public void Add(string key, BEDictionary value) => dict.Add(key, value);
+
+    // TODO: add more operations as needed
 }
 
 public class BEList
@@ -12,9 +23,10 @@ public class BEList
 
     public void Add(Int64 item) => items.Add(item);
     public void Add(string item) => items.Add(item);
-    // TODO: use custom dictionary instead
-    public void Add(Dictionary<int, int> item) => items.Add(item);
+    public void Add(BEDictionary item) => items.Add(item);
     public void Add(BEList item) => items.Add(item);
+
+    // TODO: add more operations as needed
 }
 
 public class Parser
@@ -26,11 +38,16 @@ public class Parser
         fileStream = new StreamReader(path);
     }
 
+    // TODO: find out what to do next to get useful information with bencode
     public string Parse()
     {
         var str = ParseByteString();
         var i64 = ParseInt();
+        var list = ParseList();
+        var dict = ParseDictionary();
         Console.WriteLine(i64);
+        Console.WriteLine(list);
+        Console.WriteLine(dict);
         return str;
     }
 
@@ -128,7 +145,7 @@ public class Parser
         var listEnded = false;
         while (!listEnded)
         {
-            var c = fileStream.Peek();
+            var c = (char)fileStream.Peek();
             switch (c)
             {
                 case 'e':
@@ -137,6 +154,8 @@ public class Parser
                     break;
 
                 case 'l':
+                    var list = ParseList();
+                    belist.Add(list);
                     break;
 
                 case 'i':
@@ -144,13 +163,14 @@ public class Parser
                     belist.Add(num);
                     break;
 
-                case var chr when Char.IsDigit((char)chr):
+                case var chr when Char.IsDigit(chr):
                     var bytestr = ParseByteString();
                     belist.Add(bytestr);
                     break;
 
                 case 'd':
-                    // TODO
+                    var d = ParseDictionary();
+                    belist.Add(d);
                     break;
 
                 default:
@@ -161,12 +181,46 @@ public class Parser
         return belist;
     }
 
-    private void ParseDictionary() {
-        if (fileStream.Peek() != 'd') {
-            throw new InvalidOperationException("expect value with format d<key><value>e");
+    private BEDictionary ParseDictionary()
+    {
+        if (fileStream.Peek() != 'd')
+        {
+            throw new InvalidDataException("expect value with format d<key><value>e");
         }
         fileStream.Read();
 
-        
+        var dict = new BEDictionary();
+        while (true)
+        {
+            var c = (char)fileStream.Peek();
+            if (c == 'e')
+            {
+                break;
+            }
+            if (!Char.IsDigit(c))
+            {
+                throw new InvalidDataException("Dictionary key must be a bencoded string");
+            }
+            var key = ParseByteString();
+
+            switch (c)
+            {
+                case 'l':
+                    dict.Add(key, ParseList());
+                    break;
+                case 'd':
+                    dict.Add(key, ParseDictionary());
+                    break;
+                case 'i':
+                    dict.Add(key, ParseInt());
+                    break;
+                case var chr when Char.IsDigit(chr):
+                    dict.Add(key, ParseByteString());
+                    break;
+                default:
+                    throw new InvalidDataException("must be a valid bencoding type");
+            }
+        }
+        return dict;
     }
 }
